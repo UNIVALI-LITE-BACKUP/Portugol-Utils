@@ -1,13 +1,15 @@
 package br.univali.portugol.util.jar;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
 /**
+ * Representa uma coleção de classes que pode ser filtradas. Os filtros são
+ * cumulativos e podem ser chamados em qualquer ordem.
  *
  * @author Luiz Fernando Noschang
  */
@@ -19,45 +21,113 @@ public final class Classes implements Iterable<Class>
 
     private final List<String> filtrosArquivo = new ArrayList<>();
     private final List<String> filtrosPacote = new ArrayList<>();
-    private final List<String> filtrosHeranca = new ArrayList<>();
+    private final List<Class> filtrosHeranca = new ArrayList<>();
+
+    private List<Class> classesFiltradas;
 
     Classes(CarregadorJar carregadorJar, List<Class> classes, Map<String, List<Class>> mapaClasses)
     {
         this.carregadorJar = carregadorJar;
         this.classes = classes;
+        this.classesFiltradas = classes;
         this.mapaClasses = mapaClasses;
     }
 
-    public Classes dosArquivos(File... arquivos)
+    /**
+     * Lista somente as classes que tiverem sido carregadas a partir dos JARs
+     * informados.
+     *
+     * @param jars
+     *
+     * @return as classes encontradas
+     */
+    public Classes dosJars(File... jars)
     {
-        for (File arquivo : arquivos)
+        for (File arquivo : jars)
         {
-            filtrosArquivo.add(arquivo.getAbsolutePath());
+            String caminho = obterCaminhoArquivo(arquivo);
+
+            if (!filtrosArquivo.contains(caminho))
+            {
+                filtrosArquivo.add(caminho);
+            }
         }
 
+        filtrarClasses();
+
         return this;
     }
 
+    /**
+     * Lista somente as classes que estiverem dentro dos pacotes informados. Os
+     * nomes de pacotes podem ser absolutos ou podem utilizar o caracter curinga
+     * "*".
+     * <br/>
+     * Considere a seguinte organização:
+     * <pre>
+     * - com
+     *   - example
+     *     - foo
+     *       - ClassA.class
+     *       - ClassB.class
+     *     ClassC.class
+     *     ClassD.class
+     * </pre>
+     * <br/>
+     * Se o nome do pacote for absoluto, serão carregadas apenas as classes que
+     * estiverem contidas diretamente neste pacote. Por exemplo, ao filtrar
+     * pelo pacote "com.example", somente as classes "ClassC" e "ClassD" serão
+     * retornadas.
+     * <br/>
+     * Se o nome do pacote utilizar o caracter curinga, serão carregadas todas
+     * as classes que estiverem dentro do pacote e seus sub-pacotes. Por exemplo,
+     * ao filtrar pelo pacote "com.example.*", serão carregadas as classes
+     * "ClassA", "ClassB", "ClassC" e "ClassD".
+     * <br/>
+     * O caracter curinga somente irá funcionar quando estiver no final do nome
+     * do pacote, após separado de nome qualificado ".". Exemplos de nomes de
+     * pacote válidos são: "com.*", "com.example.*", "com.example.foo.*".
+     * Exemplos de nomes de pacotes inválidos são: "com*", "com.ex*",
+     * "com.exampl*", "com.ex*.foo"
+     *
+     * @param pacotes
+     *
+     * @return as classes encontradas
+     */
     public Classes nosPacotes(String... pacotes)
     {
-        filtrosPacote.addAll(Arrays.asList(pacotes));
+        for (String pacote : pacotes)
+        {
+            if (!filtrosPacote.contains(pacote))
+            {
+                filtrosPacote.add(pacote);
+            }
+        }
+
+        filtrarClasses();
 
         return this;
     }
 
-    public Classes queEstendemOuImplementam(String... classes)
-    {
-        filtrosHeranca.addAll(Arrays.asList(classes));
-
-        return this;
-    }
-
+    /**
+     * Lista somente as classes que estendem ou implementam <b>qualquer uma</b>
+     * das classes informadas.
+     *
+     * @param classes
+     *
+     * @return as classes encontradas
+     */
     public Classes queEstendemOuImplementam(Class... classes)
     {
         for (Class classe : classes)
         {
-            filtrosHeranca.add(classe.getName());
+            if (!filtrosHeranca.contains(classe))
+            {
+                filtrosHeranca.add(classe);
+            }
         }
+
+        filtrarClasses();
 
         return this;
     }
@@ -65,24 +135,18 @@ public final class Classes implements Iterable<Class>
     @Override
     public Iterator<Class> iterator()
     {
-        List<Class> listaClasses = new ArrayList<>(classes);
-
-        filtrarArquivos(listaClasses);
-        filtrarPacotes(listaClasses);
-        filtrarHeranca(listaClasses);
-
-        return listaClasses.iterator();
+        return new ArrayList<>(classesFiltradas).iterator();
     }
 
     private void filtrarArquivos(List<Class> listaClasses)
     {
         if (!filtrosArquivo.isEmpty())
         {
-            for (String filtroArquivo : filtrosArquivo)
+            for (String arquivo : filtrosArquivo)
             {
-                if (mapaClasses.containsKey(filtroArquivo))
+                if (mapaClasses.containsKey(arquivo))
                 {
-                    listaClasses.retainAll(mapaClasses.get(filtroArquivo));
+                    listaClasses.retainAll(mapaClasses.get(arquivo));
                 }
             }
         }
@@ -101,13 +165,13 @@ public final class Classes implements Iterable<Class>
                     if (pacote.endsWith(".*"))
                     {
                         String prefixoPacote = pacote.substring(0, pacote.lastIndexOf(".*"));
-                        
-                        if (classe.getPackage().getName().startsWith(prefixoPacote))
+
+                        if (classe.getPackage().getName().startsWith(prefixoPacote) && !classesEncontradas.contains(classe))
                         {
                             classesEncontradas.add(classe);
                         }
                     }
-                    else if (classe.getPackage().getName().equals(pacote))
+                    else if (classe.getPackage().getName().equals(pacote) && !classesEncontradas.contains(classe))
                     {
                         classesEncontradas.add(classe);
                     }
@@ -124,23 +188,14 @@ public final class Classes implements Iterable<Class>
         {
             List<Class> classesEncontradas = new ArrayList<>();
 
-            for (String nomeClasse : filtrosHeranca)
+            for (Class classePai : filtrosHeranca)
             {
-                try
+                for (Class classe : listaClasses)
                 {
-                    Class classeHerdada = carregadorJar.getCarregador().loadClass(nomeClasse);
-
-                    for (Class classe : listaClasses)
+                    if (classePai.isAssignableFrom(classe) && !classe.equals(classePai))
                     {
-                        if (classeHerdada.isAssignableFrom(classe))
-                        {
-                            classesEncontradas.add(classe);
-                        }
+                        classesEncontradas.add(classe);
                     }
-                }
-                catch (ClassNotFoundException excecao)
-                {
-
                 }
             }
 
@@ -150,12 +205,32 @@ public final class Classes implements Iterable<Class>
 
     public int quantidade()
     {
-        List<Class> listaClasses = new ArrayList<>(classes);
+        return classesFiltradas.size();
+    }
 
-        filtrarArquivos(listaClasses);
-        filtrarPacotes(listaClasses);
-        filtrarHeranca(listaClasses);
+    public boolean contem(Class classe)
+    {
+        return classesFiltradas.contains(classe);
+    }
 
-        return listaClasses.size();
+    private void filtrarClasses()
+    {
+        classesFiltradas = new ArrayList<>(classes);
+
+        filtrarArquivos(classesFiltradas);
+        filtrarPacotes(classesFiltradas);
+        filtrarHeranca(classesFiltradas);
+    }
+
+    private String obterCaminhoArquivo(File arquivo)
+    {
+        try
+        {
+            return arquivo.getCanonicalPath();
+        }
+        catch (IOException excecao)
+        {
+            return arquivo.getAbsolutePath();
+        }
     }
 }

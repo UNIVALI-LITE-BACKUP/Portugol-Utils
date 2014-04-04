@@ -3,11 +3,13 @@ package br.univali.portugol.util.jar;
 import java.io.File;
 import java.io.FileFilter;
 import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.UnsupportedEncodingException;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
+import java.net.URLDecoder;
+import java.security.CodeSource;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -18,9 +20,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Carrega todas as classes de um arquivo JAR na memória. Possui metodos
- * utilitários para listar as classes existentes no JAR e procurar classes
- * que são instancias de otutras classes
+ * Carrega todas as classes de um arquivo JAR na memória.
  *
  * @author Luiz Fernando Noschang
  */
@@ -29,51 +29,46 @@ public final class CarregadorJar
     private static final Logger LOGGER = Logger.getLogger(CarregadorJar.class.getName());
 
     private final FileFilter filtroArquivoJar = new FiltroArquivoJar();
-    private final List<File> arquivosJar = new ArrayList<>();
+    private final List<File> jars = new ArrayList<>();
 
-    private ClassLoader carregador;
+    private final List<Class> classesCarregadas = new ArrayList<>();
+    private final Map<String, List<Class>> mapaClasses = new HashMap<>();
+
+    private ClassLoader carregadorClasses;
     private boolean carregado = false;
-    private Classes classesCarregadas;
 
     public CarregadorJar()
     {
 
     }
 
+    /**
+     * Inclui um caminho que será pesquisado pelo carregador em busca de arquivos
+     * JAR. Se o caminho apontar para um diretório, todos os subdiretórios serão
+     * pesquisados recursivamente. Se o caminho apontar para um arquivo JAR, o
+     * próprio arquivo JAR será carregado.
+     * <br/>
+     * Se o caminho informado não existir, ele será ignorado sem que nenhuma
+     * exceção seja gerada.
+     * <br/>
+     * Só é possível incluir um caminho enquanto os JARs não tiverem sido
+     * carregados. Qualquer chamada a este método após o carregamento dos JARs
+     * será ignorada.
+     *
+     * @param caminho o caminho a ser incluído no carregamento
+     */
     public void incluirCaminho(File caminho)
     {
-        if (caminho.exists())
+        if (!carregado && caminho.exists())
         {
             if (caminho.isFile())
             {
-                incluirArquivo(caminho);
+                jars.add(caminho);
             }
             else
             {
                 incluirDiretorio(caminho);
             }
-        }
-        else
-        {
-            String mensagem = String.format("O caminho '%s' não existe", caminho.getAbsolutePath());
-            FileNotFoundException excecao = new FileNotFoundException(mensagem);
-
-            LOGGER.log(Level.INFO, "", excecao);
-        }
-    }
-
-    private void incluirArquivo(File caminho)
-    {
-        if (filtroArquivoJar.accept(caminho))
-        {
-            arquivosJar.add(caminho);
-        }
-        else
-        {
-            String mensagem = String.format("O caminho '%s' não é um arquivo JAR nem um diretório", caminho.getAbsolutePath());
-            IllegalArgumentException excecao = new IllegalArgumentException(mensagem);
-
-            LOGGER.log(Level.INFO, mensagem, excecao);
         }
     }
 
@@ -90,53 +85,71 @@ public final class CarregadorJar
         }
     }
 
-    public List<File> getArquivosJar()
+    /**
+     * Obtém a lista dos JARs que serão carregados.
+     *
+     * @return a lista dos JARs que serão carregados
+     */
+    public List<File> getJars()
     {
-        return new ArrayList<>(arquivosJar);
+        return new ArrayList<>(jars);
     }
 
+    /**
+     * Carrega os JARs encontrados nos caminhos incluídos. O carregamento ocorre
+     * apenas uma vez. Múltiplas chamadas a este método serão ignoradas.
+     */
     public void carregar()
     {
         if (!carregado)
         {
-            Map<String, List<Class>> mapaClasses = new HashMap<>();
-            List<Class> todasClasses = new ArrayList<>();
-
             URL[] urls = obterURLs();
-            carregador = new URLClassLoader(urls);
+            carregadorClasses = new URLClassLoader(urls);
 
-            for (File arquivoJar : arquivosJar)
+            for (File jar : jars)
             {
-                List<String> nomesClasses = listarNomesClasses(arquivoJar);
-                List<Class> classesJar = carregarClasses(carregador, nomesClasses);
+                String caminhoJar = obterCaminhoArquivo(jar);
+                List<String> nomesClasses = listarNomesClasses(jar);
+                List<Class> classesJar = carregarClasses(carregadorClasses, nomesClasses);
 
-                todasClasses.addAll(classesJar);
-                mapaClasses.put(arquivoJar.getAbsolutePath(), classesJar);
+                classesCarregadas.addAll(classesJar);
+                mapaClasses.put(caminhoJar, classesJar);
             }
 
-            classesCarregadas = new Classes(this, todasClasses, mapaClasses);
             carregado = true;
+        }
+    }
+
+    private String obterCaminhoArquivo(File arquivo)
+    {
+        try
+        {
+            return arquivo.getCanonicalPath();
+        }
+        catch (IOException excecao)
+        {
+            return arquivo.getAbsolutePath();
         }
     }
 
     public Classes listarClasses()
     {
-        return classesCarregadas;
+        return new Classes(this, classesCarregadas, mapaClasses);
     }
 
     private URL[] obterURLs()
     {
-        URL[] urls = new URL[arquivosJar.size()];
+        URL[] urls = new URL[jars.size()];
 
         for (int i = 0; i < urls.length; i++)
         {
             try
             {
-                urls[i] = arquivosJar.get(i).toURI().toURL();
+                urls[i] = jars.get(i).toURI().toURL();
             }
             catch (MalformedURLException excecao)
             {
-                LOGGER.log(Level.SEVERE, String.format("Erro ao converter o caminho '%s' para URL", arquivosJar.get(i).getAbsolutePath()), excecao);
+                LOGGER.log(Level.SEVERE, String.format("Erro ao converter o caminho '%s' para URL", jars.get(i).getAbsolutePath()), excecao);
             }
         }
 
@@ -155,7 +168,16 @@ public final class CarregadorJar
             }
             catch (ClassNotFoundException excecao)
             {
-                LOGGER.log(Level.SEVERE, String.format("Erro ao carregar a classe '%s'", nomeClasse));
+                /* 
+                 *  Em teoria, é seguro assumir que esta exceção nunca ocorrerá, pois 
+                 *  os nomes das classes a serem carregadas são obtidos a partir dos 
+                 *  próprios JARs.
+                 * 
+                 * Neste caso, vamos engolir esta exeção e apenas informá-la no log, 
+                 * caso ocorra.
+                 */
+
+                LOGGER.log(Level.SEVERE, "Esta exceção não deveria ocorrer ao carregar os JARs", excecao);
             }
         }
 
@@ -191,10 +213,43 @@ public final class CarregadorJar
 
         return nomes;
     }
-    
-    ClassLoader getCarregador()
+
+    public File obterJarClasse(Class classe)
     {
-        return carregador;
+        CodeSource codeSource = classe.getProtectionDomain().getCodeSource();
+        File jarFile;
+
+        if (codeSource.getLocation() != null)
+        {
+            String l;
+                    
+            try
+            {
+                l = URLDecoder.decode(codeSource.getLocation().toString(), "UTF-8");
+            }
+            catch (UnsupportedEncodingException ex)
+            {
+                l = codeSource.getLocation().toString();
+            }
+            
+            l = l.replace("file:/", "");
+                    
+            jarFile = new File(l);
+        }
+        else
+        {
+            String path = classe.getResource(classe.getSimpleName().replace(".", "/").concat(".class")).getPath();
+            String jarFilePath = path.substring(path.indexOf(":") + 1, path.indexOf("!"));
+            
+            jarFile = new File(jarFilePath);
+        }
+        
+        return jarFile;
+    }
+
+    public ClassLoader getCarregadorClasses()
+    {
+        return carregadorClasses;
     }
 
     private final class FiltroArquivoJar implements FileFilter
