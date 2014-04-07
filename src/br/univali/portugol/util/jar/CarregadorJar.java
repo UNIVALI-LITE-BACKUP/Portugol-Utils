@@ -108,7 +108,7 @@ public final class CarregadorJar
 
             for (File jar : jars)
             {
-                String caminhoJar = obterCaminhoArquivo(jar);
+                String caminhoJar = Util.obterCaminhoArquivo(jar);
                 List<String> nomesClasses = listarNomesClasses(jar);
                 List<Class> classesJar = carregarClasses(carregadorClasses, nomesClasses);
 
@@ -120,21 +120,9 @@ public final class CarregadorJar
         }
     }
 
-    private String obterCaminhoArquivo(File arquivo)
-    {
-        try
-        {
-            return arquivo.getCanonicalPath();
-        }
-        catch (IOException excecao)
-        {
-            return arquivo.getAbsolutePath();
-        }
-    }
-
     public Classes listarClasses()
     {
-        return new Classes(this, classesCarregadas, mapaClasses);
+        return new Classes(classesCarregadas, mapaClasses);
     }
 
     private URL[] obterURLs()
@@ -222,7 +210,7 @@ public final class CarregadorJar
         if (codeSource.getLocation() != null)
         {
             String l;
-                    
+
             try
             {
                 l = URLDecoder.decode(codeSource.getLocation().toString(), "UTF-8");
@@ -231,19 +219,19 @@ public final class CarregadorJar
             {
                 l = codeSource.getLocation().toString();
             }
-            
+
             l = l.replace("file:/", "");
-                    
+
             jarFile = new File(l);
         }
         else
         {
             String path = classe.getResource(classe.getSimpleName().replace(".", "/").concat(".class")).getPath();
             String jarFilePath = path.substring(path.indexOf(":") + 1, path.indexOf("!"));
-            
+
             jarFile = new File(jarFilePath);
         }
-        
+
         return jarFile;
     }
 

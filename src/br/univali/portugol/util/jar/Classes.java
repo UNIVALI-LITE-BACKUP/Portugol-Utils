@@ -1,7 +1,6 @@
 package br.univali.portugol.util.jar;
 
 import java.io.File;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -15,7 +14,6 @@ import java.util.Map;
  */
 public final class Classes implements Iterable<Class>
 {
-    private final CarregadorJar carregadorJar;
     private final List<Class> classes;
     private final Map<String, List<Class>> mapaClasses;
 
@@ -25,9 +23,8 @@ public final class Classes implements Iterable<Class>
 
     private List<Class> classesFiltradas;
 
-    Classes(CarregadorJar carregadorJar, List<Class> classes, Map<String, List<Class>> mapaClasses)
+    Classes(List<Class> classes, Map<String, List<Class>> mapaClasses)
     {
-        this.carregadorJar = carregadorJar;
         this.classes = classes;
         this.classesFiltradas = classes;
         this.mapaClasses = mapaClasses;
@@ -45,7 +42,7 @@ public final class Classes implements Iterable<Class>
     {
         for (File arquivo : jars)
         {
-            String caminho = obterCaminhoArquivo(arquivo);
+            String caminho = Util.obterCaminhoArquivo(arquivo);
 
             if (!filtrosArquivo.contains(caminho))
             {
@@ -220,17 +217,5 @@ public final class Classes implements Iterable<Class>
         filtrarArquivos(classesFiltradas);
         filtrarPacotes(classesFiltradas);
         filtrarHeranca(classesFiltradas);
-    }
-
-    private String obterCaminhoArquivo(File arquivo)
-    {
-        try
-        {
-            return arquivo.getCanonicalPath();
-        }
-        catch (IOException excecao)
-        {
-            return arquivo.getAbsolutePath();
-        }
     }
 }
