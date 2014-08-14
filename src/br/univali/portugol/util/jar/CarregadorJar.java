@@ -104,11 +104,12 @@ public final class CarregadorJar
         if (!carregado)
         {
             URL[] urls = obterURLs();
-            carregadorClasses = new URLClassLoader(urls);
+            carregadorClasses = new URLClassLoader(urls, Thread.currentThread().getContextClassLoader());
 
             for (File jar : jars)
             {
                 String caminhoJar = Util.obterCaminhoArquivo(jar);
+                System.out.println("JAR: " + caminhoJar);
                 List<String> nomesClasses = listarNomesClasses(jar);
                 List<Class> classesJar = carregarClasses(carregadorClasses, nomesClasses);
 
