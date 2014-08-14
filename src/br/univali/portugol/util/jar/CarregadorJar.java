@@ -109,7 +109,7 @@ public final class CarregadorJar
             for (File jar : jars)
             {
                 String caminhoJar = Util.obterCaminhoArquivo(jar);
-                System.out.println("JAR: " + caminhoJar);
+                
                 List<String> nomesClasses = listarNomesClasses(jar);
                 List<Class> classesJar = carregarClasses(carregadorClasses, nomesClasses);
 
