@@ -155,7 +155,7 @@ public final class CarregadorJar
             {
                 classes.add(carregador.loadClass(nomeClasse));
             }
-            catch (ClassNotFoundException excecao)
+            catch (ClassNotFoundException | NoClassDefFoundError excecao)
             {
                 /* 
                  *  Em teoria, é seguro assumir que esta exceção nunca ocorrerá, pois 
